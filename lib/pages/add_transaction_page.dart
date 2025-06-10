@@ -2,8 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:uuid/uuid.dart';
-
 import '../models/transaction.dart';
+import '../providers/payment_method_provider.dart';
 import '../providers/transaction_provider.dart';
 
 class AddTransactionPage extends ConsumerStatefulWidget {
@@ -15,132 +15,259 @@ class AddTransactionPage extends ConsumerStatefulWidget {
 
 class _AddTransactionPageState extends ConsumerState<AddTransactionPage> {
   final _formKey = GlobalKey<FormState>();
+  final _titleController = TextEditingController();
+  final _amountController = TextEditingController();
+  final _categoryController = TextEditingController();
 
-  String title = '';
-  String category = '';
-  double amount = 0.0;
-  bool isIncome = false;
+  late String selectedMethod;
   DateTime selectedDate = DateTime.now();
-  String selectedMethod = 'Cash';
+  bool isIncome = false;
 
-  final List<String> paymentMethods = ['Cash', 'Card', 'Wallet', 'E-Wallet'];
+  @override
+  void initState() {
+    super.initState();
+    final methods = ref.read(paymentMethodProvider);
+    selectedMethod = methods.isNotEmpty ? methods.first.name : 'Cash';
+  }
+
+  @override
+  void dispose() {
+    _titleController.dispose();
+    _amountController.dispose();
+    _categoryController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
+    final paymentMethods = ref.watch(paymentMethodProvider);
+    final theme = Theme.of(context);
+
     return Scaffold(
-      appBar: AppBar(title: const Text('Add Transaction')),
-      body: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Form(
-          key: _formKey,
-          child: ListView(
-            children: [
-              // Title field
-              TextFormField(
-                decoration: const InputDecoration(
-                  labelText: 'Title',
-                  border: OutlineInputBorder(),
-                ),
-                validator: (value) => value == null || value.isEmpty ? 'Enter a title' : null,
-                onSaved: (value) => title = value!,
-              ),
-              const SizedBox(height: 16),
-
-              // Amount field
-              TextFormField(
-                decoration: const InputDecoration(
-                  labelText: 'Amount',
-                  border: OutlineInputBorder(),
-                ),
-                keyboardType: TextInputType.number,
-                validator: (value) {
-                  if (value == null || value.isEmpty) return 'Enter amount';
-                  if (double.tryParse(value) == null) return 'Enter a valid number';
-                  return null;
-                },
-                onSaved: (value) => amount = double.parse(value!),
-              ),
-              const SizedBox(height: 16),
-
-              // Income or Expense toggle
-              Row(
-                children: [
-                  const Text('Type:', style: TextStyle(fontSize: 16)),
-                  const SizedBox(width: 16),
-                  ChoiceChip(
-                    label: const Text('Expense'),
-                    selected: !isIncome,
-                    onSelected: (_) => setState(() => isIncome = false),
-                    selectedColor: Colors.red.shade100,
+      appBar: AppBar(
+        title: const Text('Add Transaction'),
+        centerTitle: true,
+        elevation: 0,
+      ),
+      body: GestureDetector(
+        onTap: () => FocusScope.of(context).unfocus(),
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Form(
+            key: _formKey,
+            child: ListView(
+              children: [
+                // Title field
+                TextFormField(
+                  controller: _titleController,
+                  decoration: InputDecoration(
+                    labelText: 'Title',
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 14,
+                    ),
                   ),
-                  const SizedBox(width: 8),
-                  ChoiceChip(
-                    label: const Text('Income'),
-                    selected: isIncome,
-                    onSelected: (_) => setState(() => isIncome = true),
-                    selectedColor: Colors.green.shade100,
+                  style: theme.textTheme.bodyLarge,
+                  validator: (value) =>
+                      value == null || value.isEmpty ? 'Enter a title' : null,
+                ),
+                const SizedBox(height: 20),
+
+                // Amount field
+                TextFormField(
+                  controller: _amountController,
+                  decoration: InputDecoration(
+                    labelText: 'Amount',
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    prefixText: '\$ ',
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 14,
+                    ),
                   ),
-                ],
-              ),
-              const SizedBox(height: 16),
-
-              // Category field
-              TextFormField(
-                decoration: const InputDecoration(
-                  labelText: 'Category',
-                  border: OutlineInputBorder(),
+                  keyboardType: TextInputType.numberWithOptions(decimal: true),
+                  style: theme.textTheme.bodyLarge,
+                  validator: (value) {
+                    if (value == null || value.isEmpty) return 'Enter amount';
+                    if (double.tryParse(value) == null) {
+                      return 'Enter a valid number';
+                    }
+                    return null;
+                  },
                 ),
-                validator: (value) => value == null || value.isEmpty ? 'Enter a category' : null,
-                onSaved: (value) => category = value!,
-              ),
-              const SizedBox(height: 16),
+                const SizedBox(height: 20),
 
-              // Payment method dropdown
-              DropdownButtonFormField<String>(
-                decoration: const InputDecoration(
-                  labelText: 'Payment Method',
-                  border: OutlineInputBorder(),
+                // Type selector
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Transaction Type',
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: theme.colorScheme.onSurface.withOpacity(0.6),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    SegmentedButton<bool>(
+                      segments: const [
+                        ButtonSegment(
+                          value: false,
+                          label: Text('Expense'),
+                          icon: Icon(Icons.arrow_upward),
+                        ),
+                        ButtonSegment(
+                          value: true,
+                          label: Text('Income'),
+                          icon: Icon(Icons.arrow_downward),
+                        ),
+                      ],
+                      selected: {isIncome},
+                      onSelectionChanged: (newSelection) {
+                        setState(() => isIncome = newSelection.first);
+                      },
+                      style: ButtonStyle(
+                        backgroundColor: MaterialStateProperty.resolveWith<Color>(
+                          (states) {
+                            if (states.contains(MaterialState.selected)) {
+                              return isIncome
+                                  ? Colors.green.shade100
+                                  : Colors.red.shade100;
+                            }
+                            return theme.colorScheme.surfaceVariant;
+                          },
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
-                value: selectedMethod,
-                items: paymentMethods
-                    .map((method) => DropdownMenuItem(
-                          value: method,
-                          child: Text(method),
-                        ))
-                    .toList(),
-                onChanged: (value) => setState(() => selectedMethod = value!),
-              ),
-              const SizedBox(height: 16),
+                const SizedBox(height: 20),
 
-              // Date picker
-              TextButton.icon(
-                icon: const Icon(Icons.calendar_today),
-                label: Text(DateFormat.yMMMd().format(selectedDate)),
-                onPressed: () async {
-                  final picked = await showDatePicker(
-                    context: context,
-                    initialDate: selectedDate,
-                    firstDate: DateTime(2000),
-                    lastDate: DateTime(2100),
-                  );
-                  if (picked != null) {
-                    setState(() => selectedDate = picked);
-                  }
-                },
-              ),
-              const SizedBox(height: 30),
-
-              // Add button
-              ElevatedButton.icon(
-                icon: const Icon(Icons.check),
-                label: const Text('Add Transaction'),
-                style: ElevatedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                  textStyle: const TextStyle(fontSize: 16),
+                // Category field
+                TextFormField(
+                  controller: _categoryController,
+                  decoration: InputDecoration(
+                    labelText: 'Category',
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 14,
+                    ),
+                  ),
+                  style: theme.textTheme.bodyLarge,
+                  validator: (value) =>
+                      value == null || value.isEmpty ? 'Enter a category' : null,
                 ),
-                onPressed: _submitForm,
-              ),
-            ],
+                const SizedBox(height: 20),
+
+                // Payment method dropdown
+                DropdownButtonFormField<String>(
+                  decoration: InputDecoration(
+                    labelText: 'Payment Method',
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 14,
+                    ),
+                  ),
+                  value: paymentMethods.isNotEmpty
+                      ? selectedMethod
+                      : 'No methods available',
+                  items: paymentMethods.isNotEmpty
+                      ? paymentMethods
+                          .map((method) => DropdownMenuItem(
+                                value: method.name,
+                                child: Row(
+                                  children: [
+                                    Icon(
+                                      method.type.icon,
+                                      color: method.type.color,
+                                      size: 20,
+                                    ),
+                                    const SizedBox(width: 12),
+                                    Text(method.name),
+                                  ],
+                                ),
+                              ))
+                          .toList()
+                      : [
+                          const DropdownMenuItem(
+                            value: 'No methods available',
+                            child: Text('No payment methods'),
+                          )
+                        ],
+                  onChanged: paymentMethods.isNotEmpty
+                      ? (value) => setState(() => selectedMethod = value!)
+                      : null,
+                  style: theme.textTheme.bodyLarge,
+                ),
+                const SizedBox(height: 20),
+
+                // Date picker
+                OutlinedButton(
+                  onPressed: () async {
+                    final picked = await showDatePicker(
+                      context: context,
+                      initialDate: selectedDate,
+                      firstDate: DateTime(2000),
+                      lastDate: DateTime(2100),
+                      builder: (context, child) {
+                        return Theme(
+                          data: theme.copyWith(
+                            colorScheme: theme.colorScheme.copyWith(
+                              primary: theme.colorScheme.primary,
+                            ),
+                          ),
+                          child: child!,
+                        );
+                      },
+                    );
+                    if (picked != null) {
+                      setState(() => selectedDate = picked);
+                    }
+                  },
+                  style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Icon(Icons.calendar_today),
+                      const SizedBox(width: 12),
+                      Text(
+                        DateFormat.yMMMd().format(selectedDate),
+                        style: theme.textTheme.bodyLarge,
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 30),
+
+                // Add button
+                FilledButton.icon(
+                  icon: const Icon(Icons.check),
+                  label: const Text('Add Transaction'),
+                  style: FilledButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  onPressed: _submitForm,
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -149,15 +276,21 @@ class _AddTransactionPageState extends ConsumerState<AddTransactionPage> {
 
   void _submitForm() {
     if (_formKey.currentState?.validate() ?? false) {
-      _formKey.currentState!.save();
+      final paymentMethods = ref.read(paymentMethodProvider);
+      final method = paymentMethods.isNotEmpty
+          ? paymentMethods.firstWhere(
+              (m) => m.name == selectedMethod,
+              orElse: () => paymentMethods.first,
+            )
+          : null;
 
       final newTransaction = Transaction(
         id: const Uuid().v4(),
-        title: title,
-        amount: amount,
-        category: category,
+        title: _titleController.text.trim(),
+        amount: double.parse(_amountController.text),
+        category: _categoryController.text.trim(),
         date: selectedDate,
-        paymentMethod: selectedMethod,
+        paymentMethod: method?.name ?? 'Cash',
         isIncome: isIncome,
       );
 
