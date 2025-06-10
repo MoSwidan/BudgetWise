@@ -16,7 +16,7 @@ class TransactionTile extends StatelessWidget {
         color: transaction.isIncome ? Colors.green : Colors.red,
       ),
       title: Text(
-        '${transaction.category} (${transaction.isIncome ? "Income" : "Expense"})',
+        '${transaction.title} (${transaction.isIncome ? "Income" : "Expense"})',
         style: TextStyle(
           fontWeight: FontWeight.bold,
           color: transaction.isIncome ? Colors.green : Colors.red,
