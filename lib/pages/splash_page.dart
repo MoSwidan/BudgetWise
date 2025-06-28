@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:hive/hive.dart';
+import 'package:budgetwise/l10n/app_localizations.dart';
 
 class OnboardingScreen extends StatefulWidget {
   const OnboardingScreen({super.key});
@@ -12,52 +13,52 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   final PageController _pageController = PageController();
   int _currentPage = 0;
 
-  final List<OnboardingPage> _pages = [
-    OnboardingPage(
-      icon: Icons.security,
-      color: Colors.indigo,
-      title: 'Your Data, Your Device',
-      description: 'All your financial data stays securely on your device with end-to-end encryption.',
-      features: [
-        'Bank-level security',
-        'No cloud storage',
-        'Private by design',
-      ],
-    ),
-    OnboardingPage(
-      icon: Icons.insights,
-      color: Colors.blue,
-      title: 'Smart Money Insights',
-      description: 'Get powerful analytics to understand your spending patterns.',
-      features: [
-        'Visual spending reports',
-        'Customizable budgets',
-        'Trend analysis',
-      ],
-    ),
-    OnboardingPage(
-      icon: Icons.account_balance_wallet,
-      color: Colors.teal,
-      title: 'All Payment Methods',
-      description: 'Track all your accounts in one place.',
-      features: [
-        'Credit/Debit Cards',
-        'Digital Wallets',
-        'Cash & Bank Accounts',
-      ],
-    ),
-  ];
-
-  Future<void> _completeOnboarding() async {
-    final box = await Hive.openBox('settings');
-    await box.put('onboardingComplete', true);
-    if (mounted) {
-      Navigator.of(context).pushReplacementNamed('/home');
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
+    final loc = AppLocalizations.of(context)!;
+    final currentLocale = Localizations.localeOf(context);
+    
+    // Create localized onboarding pages
+    final List<OnboardingPage> _pages = [
+      OnboardingPage(
+        icon: Icons.security,
+        color: Colors.indigo,
+        title: loc.onboardingTitle1,
+        description: loc.onboardingDesc1,
+        features: [
+          loc.onboardingFeature1_1,
+          loc.onboardingFeature1_2,
+          loc.onboardingFeature1_3,
+        ],
+      ),
+      OnboardingPage(
+        icon: Icons.insights,
+        color: Colors.blue,
+        title: loc.onboardingTitle2,
+        description: loc.onboardingDesc2,
+        features: [
+          loc.onboardingFeature2_1,
+          loc.onboardingFeature2_2,
+          loc.onboardingFeature2_3,
+        ],
+      ),
+      OnboardingPage(
+        icon: Icons.account_balance_wallet,
+        color: Colors.teal,
+        title: loc.onboardingTitle3,
+        description: loc.onboardingDesc3,
+        features: [
+          loc.onboardingFeature3_1,
+          loc.onboardingFeature3_2,
+          loc.onboardingFeature3_3,
+        ],
+      ),
+    ];
+    
+    // Debug: Print current locale
+    print('Splash Screen Locale: ${currentLocale.languageCode}');
+    print('Splash Screen Text: ${_currentPage == _pages.length - 1 ? loc.getStarted : loc.continueLabel}');
+    
     return Scaffold(
       backgroundColor: Theme.of(context).colorScheme.surface,
       body: SafeArea(
@@ -89,7 +90,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                         height: 8,
                         decoration: BoxDecoration(
                           color: _currentPage == index
-                              ? _pages[index].color
+                              ? Theme.of(context).colorScheme.primary
                               : Colors.grey.withOpacity(0.4),
                           borderRadius: BorderRadius.circular(4),
                         ),
@@ -103,7 +104,8 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                     child: ElevatedButton(
                       style: ElevatedButton.styleFrom(
                         padding: const EdgeInsets.symmetric(vertical: 16),
-                        backgroundColor: _pages[_currentPage].color,
+                        backgroundColor: Theme.of(context).colorScheme.primary,
+                        foregroundColor: Colors.white,
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(12),
                         ),
@@ -115,11 +117,11 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                                 curve: Curves.easeOut,
                               ),
                       child: Text(
-                        _currentPage == _pages.length - 1 ? 'Get Started' : 'Continue',
+                        _currentPage == _pages.length - 1 ? loc.getStarted : loc.continueLabel,
                         style: const TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
                           color: Colors.white,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
                         ),
                       ),
                     ),
@@ -128,12 +130,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                   if (_currentPage != _pages.length - 1)
                     TextButton(
                       onPressed: _completeOnboarding,
-                      child: Text(
-                        'Skip',
-                        style: TextStyle(
-                          color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
-                        ),
-                      ),
+                      child: Text(loc.skip),
                     ),
                 ],
               ),
@@ -142,6 +139,14 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
         ),
       ),
     );
+  }
+
+  Future<void> _completeOnboarding() async {
+    final settingsBox = await Hive.openBox('settings');
+    await settingsBox.put('onboardingComplete', true);
+    if (mounted) {
+      Navigator.of(context).pushReplacementNamed('/home');
+    }
   }
 
   @override

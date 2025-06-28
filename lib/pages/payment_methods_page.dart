@@ -4,6 +4,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import '../models/payment_method.dart';
 import 'package:uuid/uuid.dart';
+import '../providers/transaction_provider.dart';
+import 'package:budgetwise/l10n/app_localizations.dart';
 
 class PaymentMethodsPage extends ConsumerStatefulWidget {
   const PaymentMethodsPage({super.key});
@@ -46,8 +48,39 @@ class _PaymentMethodsPageState extends ConsumerState<PaymentMethodsPage> {
 
   Future<void> _deleteMethod(int index) async {
     final box = Hive.box<PaymentMethod>('payment_methods');
+    final methods = box.values.toList();
+    final method = methods[index];
+    
+    // Check if this method is used in any transaction using the provider
+    final transactions = ref.read(transactionProvider);
+    final used = transactions.any((txn) => txn.paymentMethod == method.name);
+    
+    if (used) {
+      if (mounted) {
+        showDialog(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('Cannot Delete'),
+            content: const Text('This payment method is used in a transaction and cannot be deleted.'),
+            actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('OK'))],
+          ),
+        );
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Cannot delete: This payment method is used in a transaction.'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+      return;
+    }
+    
     await box.deleteAt(index);
-    if (mounted) setState(() {});
+    // Refresh payment methods
+    if (mounted) {
+      setState(() {});
+      ref.read(paymentMethodProvider.notifier).loadMethods();
+    }
   }
 
   @override
@@ -60,114 +93,57 @@ class _PaymentMethodsPageState extends ConsumerState<PaymentMethodsPage> {
   Widget build(BuildContext context) {
     final methodsBox = Hive.box<PaymentMethod>('payment_methods');
     final methods = methodsBox.values.toList();
+    final isRTL = Directionality.of(context) == TextDirection.rtl;
+    final loc = AppLocalizations.of(context)!;
+
+    String getPaymentTypeLabel(PaymentType type) {
+      switch (type) {
+        case PaymentType.card:
+          return loc.card;
+        case PaymentType.cash:
+          return loc.cash;
+        case PaymentType.eWallet:
+          return loc.eWallet;
+      }
+    }
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text(
-          "Payment Methods",
-          style: TextStyle(fontWeight: FontWeight.bold),
-        ),
+        title: Text(loc.paymentMethods),
         centerTitle: true,
         elevation: 0,
       ),
-      body: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16),
-        child: Column(
-          children: [
-            // Add Method Form
-            Form(
-              key: _formKey,
-              child: Column(
-                children: [
-                  SizedBox(height: 12,),
-                  Material(
-                    elevation: 4,
-                    borderRadius: BorderRadius.circular(12),
-                    shadowColor: Theme.of(
-                      context,
-                    ).colorScheme.shadow.withOpacity(0.1),
-                    child: TextFormField(
+      body: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          Card(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+            elevation: 3,
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Form(
+                key: _formKey,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Text(loc.addPaymentMethod, style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 16),
+                    TextFormField(
                       controller: _controller,
                       decoration: InputDecoration(
-                        labelText: "Payment Method Name",
-                        hintText: "e.g. Chase Visa, PayPal Cash",
-                        floatingLabelBehavior: FloatingLabelBehavior.auto,
-                        filled: true,
-                        fillColor: Theme.of(
-                          context,
-                        ).colorScheme.surfaceVariant.withOpacity(0.2),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                          borderSide: BorderSide.none,
-                        ),
-                        enabledBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                          borderSide: BorderSide.none,
-                        ),
-                        focusedBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                          borderSide: BorderSide(
-                            color: Theme.of(
-                              context,
-                            ).colorScheme.primary.withOpacity(0.8),
-                            width: 2,
-                          ),
-                        ),
-                        errorBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                          borderSide: BorderSide(
-                            color: Theme.of(context).colorScheme.error,
-                            width: 1.5,
-                          ),
-                        ),
-                        contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 20,
-                          vertical: 18,
-                        ),
-                        prefixIcon: Padding(
-                          padding: const EdgeInsets.only(left: 16, right: 12),
-                          child: Icon(
-                            _selectedType.icon,
-                            size: 24,
-                            color: _selectedType.color,
-                          ),
-                        ),
-                        suffixIcon:
-                            _controller.text.isNotEmpty
-                                ? IconButton(
-                                  icon: Icon(
-                                    Icons.clear,
-                                    color: Theme.of(
-                                      context,
-                                    ).colorScheme.onSurface.withOpacity(0.4),
-                                  ),
-                                  onPressed: () {
-                                    _controller.clear();
-                                    setState(() {});
-                                  },
-                                )
-                                : null,
-                        labelStyle: TextStyle(
-                          color: Theme.of(
-                            context,
-                          ).colorScheme.onSurface.withOpacity(0.6),
-                        ),
-                        hintStyle: TextStyle(
-                          color: Theme.of(
-                            context,
-                          ).colorScheme.onSurface.withOpacity(0.4),
-                        ),
+                        labelText: loc.paymentMethod,
+                        hintText: 'e.g. Visa, PayPal',
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(16)),
+                        prefixIcon: Icon(_selectedType.icon, color: _selectedType.color),
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
                       ),
-                      style: TextStyle(
-                        color: Theme.of(context).colorScheme.onSurface,
-                        fontSize: 16,
-                      ),
+                      style: Theme.of(context).textTheme.bodyLarge,
                       validator: (value) {
                         if (value == null || value.trim().isEmpty) {
-                          return 'Please enter a payment method name';
+                          return loc.pleaseAddPaymentMethod;
                         }
                         if (value.length > 24) {
-                          return 'Name too long (max 24 chars)';
+                          return loc.paymentMethod + ' (max 24)';
                         }
                         return null;
                       },
@@ -175,166 +151,100 @@ class _PaymentMethodsPageState extends ConsumerState<PaymentMethodsPage> {
                       textCapitalization: TextCapitalization.words,
                       textInputAction: TextInputAction.done,
                       maxLength: 24,
-                      buildCounter: (
-                        context, {
-                        required currentLength,
-                        required isFocused,
-                        required maxLength,
-                      }) {
-                        return Padding(
-                          padding: const EdgeInsets.only(right: 16),
-                          child: Text(
-                            '$currentLength/$maxLength',
-                            style: TextStyle(
-                              color: Theme.of(
-                                context,
-                              ).colorScheme.onSurface.withOpacity(0.4),
-                              fontSize: 12,
-                            ),
-                          ),
-                        );
-                      },
                     ),
-                  ),
-                  const SizedBox(height: 12),
-                  // Payment Type Selector
-                  SizedBox(
-                    height: 50,
-                    child: ListView.separated(
-                      scrollDirection: Axis.horizontal,
-                      itemCount: paymentTypes.length,
-                      separatorBuilder: (_, __) => const SizedBox(width: 8),
-                      itemBuilder: (context, index) {
-                        final type = paymentTypes[index];
-                        return ChoiceChip(
-                          label: Text(
-                            type.displayName,
-                            style: TextStyle(
-                              color:
-                                  _selectedType == type
-                                      ? Colors.white
-                                      : Theme.of(context).colorScheme.onSurface,
-                            ),
-                          ),
-                          selected: _selectedType == type,
-                          onSelected:
-                              (_) => setState(() => _selectedType = type),
-                          selectedColor: Theme.of(context).colorScheme.primary,
-                          backgroundColor:
-                              Theme.of(context).colorScheme.surfaceVariant,
-                          padding: const EdgeInsets.symmetric(horizontal: 16),
-                        );
-                      },
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  SizedBox(
-                    width: double.infinity,
-                    child: FilledButton.icon(
-                      onPressed:
-                          _isAdding
-                              ? null
-                              : () {
-                                if (_formKey.currentState!.validate()) {
-                                  _addMethod(_controller.text.trim());
-                                }
-                              },
-                      icon:
-                          _isAdding
-                              ? const SizedBox(
-                                width: 16,
-                                height: 16,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  color: Colors.white,
-                                ),
-                              )
-                              : const Icon(Icons.add, size: 20),
-                      label: const Text("Add Payment Method"),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 24),
-
-            // Methods List
-            Expanded(
-              child:
-                  methods.isEmpty
-                      ? _buildEmptyState(context)
-                      : ListView.builder(
-                        itemCount: methods.length,
+                    const SizedBox(height: 12),
+                    SizedBox(
+                      height: 50,
+                      child: ListView.separated(
+                        scrollDirection: Axis.horizontal,
+                        itemCount: paymentTypes.length,
+                        separatorBuilder: (_, __) => const SizedBox(width: 8),
                         itemBuilder: (context, index) {
-                          final method = methods[index];
-                          return _buildMethodItem(method, index);
+                          final type = paymentTypes[index];
+                          return ChoiceChip(
+                            label: Text(getPaymentTypeLabel(type)),
+                            selected: _selectedType == type,
+                            onSelected: (_) => setState(() => _selectedType = type),
+                            selectedColor: Theme.of(context).colorScheme.primary,
+                            backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest,
+                            labelStyle: TextStyle(color: _selectedType == type ? Colors.white : Theme.of(context).colorScheme.onSurface),
+                            padding: const EdgeInsets.symmetric(horizontal: 16),
+                          );
                         },
                       ),
+                    ),
+                    const SizedBox(height: 12),
+                    FilledButton.icon(
+                      onPressed: _isAdding ? null : () {
+                        if (_formKey.currentState!.validate()) {
+                          _addMethod(_controller.text.trim());
+                        }
+                      },
+                      icon: _isAdding
+                          ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                          : const Icon(Icons.add, size: 20),
+                      label: Text(loc.addPaymentMethod),
+                      style: FilledButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             ),
-          ],
-        ),
+          ),
+          const SizedBox(height: 24),
+          if (methods.isEmpty)
+            Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.credit_card_off, size: 64, color: Theme.of(context).colorScheme.outline.withOpacity(0.5)),
+                  const SizedBox(height: 16),
+                  Text(loc.noPaymentMethodsYet, style: Theme.of(context).textTheme.titleMedium?.copyWith(color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6))),
+                  const SizedBox(height: 8),
+                  Text(loc.addYourFirstPaymentMethod, style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Theme.of(context).colorScheme.onSurface.withOpacity(0.4))),
+                ],
+              ),
+            )
+          else
+            // Replace the card for each payment method with this improved version
+...methods.map((method) => Card(
+  shape: RoundedRectangleBorder(
+    borderRadius: BorderRadius.circular(12),
+  ),
+  elevation: 1,
+  margin: const EdgeInsets.only(bottom: 12),
+  child: ListTile(
+    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+    leading: Container(
+      padding: const EdgeInsets.all(8),
+      decoration: BoxDecoration(
+        color: method.type.color.withOpacity(0.1),
+        shape: BoxShape.circle,
       ),
-    );
-  }
-
-  Widget _buildMethodItem(PaymentMethod method, int index) {
-    return Card(
-      margin: const EdgeInsets.only(bottom: 12),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      elevation: 1,
-      child: ListTile(
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16),
-        leading: Container(
-          padding: const EdgeInsets.all(8),
-          decoration: BoxDecoration(
-            color: method.type.color.withOpacity(0.1),
-            shape: BoxShape.circle,
-          ),
-          child: Icon(method.type.icon, size: 20, color: method.type.color),
-        ),
-        title: Text(
-          method.name,
-          style: const TextStyle(fontWeight: FontWeight.w500),
-        ),
-        subtitle: Text(
-          method.type.displayName,
-          style: TextStyle(
-            color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
-          ),
-        ),
-        trailing: IconButton(
-          icon: const Icon(Icons.delete_outline),
-          color: Colors.red.withOpacity(0.7),
-          onPressed: () => _showDeleteDialog(context, index),
-        ),
+      child: Icon(method.type.icon, size: 24, color: method.type.color),
+    ),
+    title: Text(
+      method.name,
+      style: const TextStyle(fontWeight: FontWeight.w500),
+    ),
+    subtitle: Text(
+      method.type.displayName,
+      style: TextStyle(
+        color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
+        fontSize: 12,
       ),
-    );
-  }
-
-  Widget _buildEmptyState(BuildContext context) {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(
-            Icons.credit_card_off,
-            size: 48,
-            color: Theme.of(context).colorScheme.outline.withOpacity(0.5),
-          ),
-          const SizedBox(height: 16),
-          Text(
-            "No payment methods yet",
-            style: Theme.of(context).textTheme.titleMedium?.copyWith(
-              color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            "Add your first payment method above",
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-              color: Theme.of(context).colorScheme.onSurface.withOpacity(0.4),
-            ),
-          ),
+    ),
+    trailing: IconButton(
+      icon: const Icon(Icons.delete_outline, size: 20),
+      color: Colors.red.withOpacity(0.7),
+      onPressed: () => _showDeleteDialog(context, methods.indexOf(method)),
+      tooltip: loc.delete,
+    ),
+  ),
+)),
         ],
       ),
     );

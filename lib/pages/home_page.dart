@@ -2,12 +2,14 @@ import 'package:budgetwise/models/payment_method.dart';
 import 'package:budgetwise/pages/payment_methods_page.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:flutter/scheduler.dart';
 import '../providers/payment_method_provider.dart';
 import '../providers/transaction_provider.dart';
 import '../widgets/transaction_tile.dart';
+import '../services/currency_service.dart';
 import 'add_transaction_page.dart';
 import 'transactions_page.dart';
+import 'package:budgetwise/l10n/app_localizations.dart';
+import '../providers/currency_provider.dart';
 
 class HomePage extends ConsumerWidget {
   const HomePage({super.key});
@@ -16,6 +18,8 @@ class HomePage extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final methods = ref.watch(paymentMethodProvider);
     final transactions = ref.watch(transactionProvider);
+    final currency = ref.watch(currencyProvider);
+    final loc = AppLocalizations.of(context)!;
     
     final income = transactions
         .where((t) => t.isIncome)
@@ -27,16 +31,19 @@ class HomePage extends ConsumerWidget {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text(
-          'Budget Wise',
-          style: TextStyle(fontWeight: FontWeight.bold),
-        ),
+        title: Text(loc.appTitle, style: const TextStyle(fontWeight: FontWeight.bold)),
         centerTitle: true,
         elevation: 0,
         actions: [
           IconButton(
             icon: const Icon(Icons.analytics_outlined),
-            onPressed: () {}, // Add analytics navigation
+            onPressed: () => Navigator.pushNamed(context, '/analytics'),
+            tooltip: loc.analytics,
+          ),
+          IconButton(
+            icon: const Icon(Icons.settings),
+            onPressed: () => Navigator.pushNamed(context, '/settings'),
+            tooltip: loc.settings,
           ),
         ],
       ),
@@ -46,108 +53,126 @@ class HomePage extends ConsumerWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             // 1. Payment Methods Section
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                _buildSectionHeader(context, 'Payment Methods'),
-                TextButton(
-                  onPressed:
-                      () => Navigator.push(
+            Card(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              elevation: 2,
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(loc.paymentMethods, style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold)),
+                        TextButton(
+                          onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const PaymentMethodsPage())),
+                          child: Text(loc.viewAll, style: const TextStyle(fontWeight: FontWeight.w600)),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    if (methods.isEmpty)
+                      _buildEmptyState(
                         context,
-                        MaterialPageRoute(
-                          builder: (_) => const PaymentMethodsPage(),
+                        icon: Icons.credit_card,
+                        message: loc.noPaymentMethodsYet,
+                        actionText: loc.addMethod,
+                        onAction: () => _navigateToAddMethod(context),
+                      )
+                    else
+                      SizedBox(
+                        height: 110,
+                        child: ListView.separated(
+                          scrollDirection: Axis.horizontal,
+                          itemCount: methods.length,
+                          itemBuilder: (context, index) {
+                            final method = methods[index];
+                            return _buildPaymentMethodCard(method);
+                          },
+                          separatorBuilder: (_, __) => const SizedBox(width: 12),
                         ),
                       ),
-                  child: const Text(
-                    'View All',
-                    style: TextStyle(fontWeight: FontWeight.w600),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            if (methods.isEmpty)
-              _buildEmptyState(
-                context,
-                icon: Icons.credit_card,
-                message: 'No payment methods added yet.',
-                actionText: 'Add Method',
-                onAction: () => _navigateToAddMethod(context),
-              )
-            else
-              SizedBox(
-                height: 110,
-                child: ListView.separated(
-                  scrollDirection: Axis.horizontal,
-                  itemCount: methods.length,
-                  itemBuilder: (context, index) {
-                    final method = methods[index];
-                    return _buildPaymentMethodCard(method);
-                  },
-                  separatorBuilder: (_, __) => const SizedBox(width: 12),
+                  ],
                 ),
               ),
+            ),
 
-            const SizedBox(height: 24),
+            const SizedBox(height: 14),
             const Divider(height: 1, thickness: 0.5),
-            const SizedBox(height: 24),
+            const SizedBox(height: 14),
 
             // 2. Monthly Overview
-            _buildSectionHeader(context, 'Monthly Overview'),
-            const SizedBox(height: 15),
-            _buildOverviewCards(context, income, expenses, balance),
+            Card(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              elevation: 2,
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(loc.monthlyOverview, style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 15),
+                    _buildOverviewCards(context, income, expenses, balance, currency, loc),
+                  ],
+                ),
+              ),
+            ),
 
-            const SizedBox(height: 24),
+            const SizedBox(height: 14),
             const Divider(height: 1, thickness: 0.5),
-            const SizedBox(height: 24),
+            const SizedBox(height: 14),
 
             // 3. Recent Transactions
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                _buildSectionHeader(context, 'Recent Transactions'),
-                TextButton(
-                  onPressed:
-                      () => Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => const TransactionsPage(),
+            Card(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              elevation: 2,
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(loc.recentTransactions, style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold)),
+                        TextButton(
+                          onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const TransactionsPage())),
+                          child: Text(loc.viewAll, style: const TextStyle(fontWeight: FontWeight.w600)),
                         ),
-                      ),
-                  child: const Text(
-                    'View All',
-                    style: TextStyle(fontWeight: FontWeight.w600),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            if (transactions.isEmpty)
-              _buildEmptyState(
-                context,
-                icon: Icons.receipt_long,
-                message: 'No transactions yet.',
-                actionText: 'Add Transaction',
-                onAction: () => _navigateToAddTransaction(context),
-              )
-            else
-              ...transactions
-                  .take(3)
-                  .map(
-                    (t) => Padding(
-                      padding: const EdgeInsets.only(bottom: 12),
-                      child: TransactionTile(transaction: t),
+                      ],
                     ),
-                  )
-                  .toList(),
+                    const SizedBox(height: 12),
+                    if (transactions.isEmpty)
+                      _buildEmptyState(
+                        context,
+                        icon: Icons.receipt_long,
+                        message: loc.noTransactionsYet,
+                        actionText: loc.addTransaction,
+                        onAction: () => _navigateToAddTransaction(context),
+                      )
+                    else
+                      ...transactions
+                          .take(3)
+                          .map(
+                            (t) => Padding(
+                              padding: const EdgeInsets.only(bottom: 12),
+                              child: TransactionTile(transaction: t, currency: currency),
+                            ),
+                          ),
+                  ],
+                ),
+              ),
+            ),
           ],
         ),
       ),
-      // floatingActionButton: FloatingActionButton(
-      //   onPressed: () => _navigateToAddTransaction(context),
-      //   backgroundColor: Theme.of(context).colorScheme.primary,
-      //   child: const Icon(Icons.add, color: Colors.white),
-      // ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: () => _navigateToAddTransaction(context),
+        backgroundColor: Theme.of(context).colorScheme.primary,
+        child: const Icon(Icons.add, color: Colors.white),
+        tooltip: loc.addTransaction,
+      ),
     );
   }
 
@@ -158,7 +183,7 @@ class HomePage extends ConsumerWidget {
       title,
       style: Theme.of(context).textTheme.titleLarge?.copyWith(
         fontWeight: FontWeight.bold,
-        color: Theme.of(context).colorScheme.onBackground,
+        color: Theme.of(context).colorScheme.onSurface,
       ),
     );
   }
@@ -204,37 +229,36 @@ class HomePage extends ConsumerWidget {
     double income,
     double expenses,
     double balance,
+    String currency,
+    AppLocalizations loc,
   ) {
-    return Row(
+    return Column(
       children: [
-        Expanded(
-          child: _buildSummaryCard(
-            context,
-            title: 'Income',
-            value: income,
-            icon: Icons.arrow_downward,
-            color: Colors.green,
-          ),
+        _buildSummaryCard(
+          context,
+          title: loc.income,
+          value: income,
+          icon: Icons.arrow_downward,
+          color: Colors.green,
+          currency: currency,
         ),
-        const SizedBox(width: 8),
-        Expanded(
-          child: _buildSummaryCard(
-            context,
-            title: 'Expenses',
-            value: expenses,
-            icon: Icons.arrow_upward,
-            color: Colors.red,
-          ),
+        const SizedBox(height: 8),
+        _buildSummaryCard(
+          context,
+          title: loc.expenses,
+          value: expenses,
+          icon: Icons.arrow_upward,
+          color: Colors.red,
+          currency: currency,
         ),
-        const SizedBox(width: 8),
-        Expanded(
-          child: _buildSummaryCard(
-            context,
-            title: 'Balance',
-            value: balance,
-            icon: Icons.account_balance_wallet,
-            color: Colors.blue,
-          ),
+        const SizedBox(height: 8),
+        _buildSummaryCard(
+          context,
+          title: loc.balance,
+          value: balance,
+          icon: Icons.account_balance_wallet,
+          color: Colors.blue,
+          currency: currency,
         ),
       ],
     );
@@ -246,53 +270,48 @@ class HomePage extends ConsumerWidget {
     required double value,
     required IconData icon,
     required Color color,
+    required String currency,
   }) {
     final isNegative = value < 0;
+    final locale = Localizations.localeOf(context);
     return Container(
-      // Removed Expanded here
-      padding: const EdgeInsets.all(12), // Reduced padding
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.05),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: color.withOpacity(0.2), width: 1),
+        color: color.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: color.withOpacity(0.3), 
+          width: 1
+        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
-            mainAxisSize: MainAxisSize.min, // Added to prevent overflow
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Container(
-                padding: const EdgeInsets.all(4),
-                decoration: BoxDecoration(
-                  color: color.withOpacity(0.1),
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(icon, size: 14, color: color), // Smaller icon
-              ),
-              const SizedBox(width: 6), // Reduced spacing
-              Flexible(
-                // Wrap text in Flexible
-                child: Text(
-                  title,
-                  style: TextStyle(
-                    color: color,
-                    fontSize: 11, // Smaller font
-                    fontWeight: FontWeight.w600,
+              Row(
+                children: [
+                  Icon(icon, size: 20, color: color),
+                  const SizedBox(width: 8),
+                  Text(
+                    title,
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: Theme.of(context).colorScheme.onSurface.withOpacity(0.8),
+                    ),
                   ),
-                  overflow: TextOverflow.ellipsis, // Prevent text overflow
+                ],
+              ),
+              Text(
+                CurrencyService.formatAmount(value.abs(), currency: currency, locale: locale),
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.bold,
+                  color: isNegative ? Colors.red : color,
                 ),
               ),
             ],
-          ),
-          const SizedBox(height: 6),
-          Text(
-            '\$${value.abs().toStringAsFixed(2)}',
-            style: TextStyle(
-              fontSize: 16, // Slightly smaller
-              fontWeight: FontWeight.bold,
-              color: isNegative ? Colors.red : color,
-            ),
           ),
         ],
       ),
@@ -307,10 +326,10 @@ class HomePage extends ConsumerWidget {
     required VoidCallback onAction,
   }) {
     return Container(
-      width: double.infinity, // Takes full width
+      width: double.infinity,
       padding: const EdgeInsets.symmetric(vertical: 22, horizontal: 22),
       decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.2),
+        color: Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.2),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
           color: Theme.of(context).dividerColor.withOpacity(0.2),
@@ -327,7 +346,7 @@ class HomePage extends ConsumerWidget {
               shape: BoxShape.circle,
               color: Theme.of(
                 context,
-              ).colorScheme.surfaceVariant.withOpacity(0.3),
+              ).colorScheme.surfaceContainerHighest.withOpacity(0.3),
             ),
             child: Icon(
               icon,
@@ -347,7 +366,7 @@ class HomePage extends ConsumerWidget {
           ),
           const SizedBox(height: 10),
           SizedBox(
-            width: double.infinity, // Full width button
+            width: double.infinity,
             child: FilledButton.icon(
               style: FilledButton.styleFrom(
                 padding: const EdgeInsets.symmetric(vertical: 16),
@@ -370,10 +389,13 @@ class HomePage extends ConsumerWidget {
   }
 
   // --- Navigation Helpers ---
+
   void _navigateToAddTransaction(BuildContext context) {
     Navigator.push(
       context,
-      MaterialPageRoute(builder: (_) => const AddTransactionPage()),
+      MaterialPageRoute(
+        builder: (_) => const AddTransactionPage(),
+      ),
     );
   }
 
